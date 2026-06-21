@@ -36,14 +36,14 @@ router.post('/:projectId/envs/:envName', async (req, res) => {
 
 router.put('/:projectId/envs/:envName/:key', async (req, res) => {
   try {
-    const item = await configService.updateConfigItem(req.params.projectId, req.params.envName, req.params.key, req.body);
-    if (!item) {
+    const result = await configService.updateConfigItem(req.params.projectId, req.params.envName, req.params.key, req.body);
+    if (!result.item) {
       res.status(404).json({ success: false, error: 'Config not found' });
       return;
     }
-    res.json({ success: true, data: item });
-  } catch {
-    res.status(500).json({ success: false, error: 'Failed to update config' });
+    res.json({ success: true, data: result.item, alerts: result.alerts });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e instanceof Error ? e.message : 'Failed to update config' });
   }
 });
 

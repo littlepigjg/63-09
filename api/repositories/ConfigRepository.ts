@@ -1,5 +1,5 @@
 import { JsonRepository } from './JsonRepository.js';
-import type { ConfigData, Project, ConfigItem } from '../../shared/types.js';
+import type { ConfigData, Project, ConfigItem, DependencyRule } from '../../shared/types.js';
 
 export class ConfigRepository {
   private repo: JsonRepository<ConfigData>;
@@ -61,13 +61,74 @@ export class ConfigRepository {
     return env ? env.configs : null;
   }
 
+  async getDependencies(projectId: string, envName: string): Promise<DependencyRule[] | null> {
+    const data = await this.getData();
+    const project = data.projects.find((p) => p.id === projectId);
+    if (!project) return null;
+    const env = project.environments.find((e) => e.name === envName);
+    if (!env) return null;
+    if (!env.dependencies) {
+      env.dependencies = [];
+      await this.saveData(data);
+    }
+    return env.dependencies;
+  }
+
+  async addDependency(projectId: string, envName: string, rule: DependencyRule): Promise<DependencyRule | null> {
+    const data = await this.getData();
+    const project = data.projects.find((p) => p.id === projectId);
+    if (!project) return null;
+    let env = project.environments.find((e) => e.name === envName);
+    if (!env) {
+      env = { name: envName, configs: [], dependencies: [] };
+      project.environments.push(env);
+    }
+    if (!env.dependencies) {
+      env.dependencies = [];
+    }
+    const existing = env.dependencies.find((d) => d.id === rule.id);
+    if (existing) return null;
+    env.dependencies.push(rule);
+    project.updatedAt = new Date().toISOString();
+    await this.saveData(data);
+    return rule;
+  }
+
+  async updateDependency(projectId: string, envName: string, ruleId: string, updates: Partial<DependencyRule>): Promise<DependencyRule | null> {
+    const data = await this.getData();
+    const project = data.projects.find((p) => p.id === projectId);
+    if (!project) return null;
+    const env = project.environments.find((e) => e.name === envName);
+    if (!env || !env.dependencies) return null;
+    const rule = env.dependencies.find((d) => d.id === ruleId);
+    if (!rule) return null;
+    Object.assign(rule, updates, { updatedAt: new Date().toISOString() });
+    project.updatedAt = new Date().toISOString();
+    await this.saveData(data);
+    return rule;
+  }
+
+  async deleteDependency(projectId: string, envName: string, ruleId: string): Promise<boolean> {
+    const data = await this.getData();
+    const project = data.projects.find((p) => p.id === projectId);
+    if (!project) return false;
+    const env = project.environments.find((e) => e.name === envName);
+    if (!env || !env.dependencies) return false;
+    const idx = env.dependencies.findIndex((d) => d.id === ruleId);
+    if (idx === -1) return false;
+    env.dependencies.splice(idx, 1);
+    project.updatedAt = new Date().toISOString();
+    await this.saveData(data);
+    return true;
+  }
+
   async addConfigItem(projectId: string, envName: string, item: ConfigItem): Promise<ConfigItem | null> {
     const data = await this.getData();
     const project = data.projects.find((p) => p.id === projectId);
     if (!project) return null;
     let env = project.environments.find((e) => e.name === envName);
     if (!env) {
-      env = { name: envName, configs: [] };
+      env = { name: envName, configs: [], dependencies: [] };
       project.environments.push(env);
     }
     const existing = env.configs.find((c) => c.key === item.key);

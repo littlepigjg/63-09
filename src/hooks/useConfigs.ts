@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { api } from '@/utils/api';
 import { useSSE } from './useSSE';
 import { useDocumentVisibility } from './useDocumentVisibility';
-import type { ConfigItem } from '../../shared/types';
+import type { ConfigItem, DependencyAlert } from '../../shared/types';
 
 interface UseConfigsOptions {
   projectId: string | null;
@@ -65,15 +65,16 @@ export function useConfigs(options: UseConfigsOptions) {
     return null;
   }, [projectId, envName, fetchConfigs]);
 
-  const updateConfig = useCallback(async (key: string, updates: Partial<ConfigItem>) => {
-    if (!projectId || !envName) return null;
+  const updateConfig = useCallback(async (key: string, updates: Partial<ConfigItem>): Promise<{ item: ConfigItem | null; alerts: DependencyAlert[] }> => {
+    if (!projectId || !envName) return { item: null, alerts: [] };
     const res = await api.put<ConfigItem>(`/projects/${projectId}/envs/${envName}/${key}`, updates);
     if (res.success && res.data) {
       lastFetchRef.current = 0;
       await fetchConfigs();
-      return res.data;
+      const alertsRes = res as unknown as { alerts?: DependencyAlert[] };
+      return { item: res.data, alerts: alertsRes.alerts || [] };
     }
-    return null;
+    return { item: null, alerts: [] };
   }, [projectId, envName, fetchConfigs]);
 
   const deleteConfig = useCallback(async (key: string) => {

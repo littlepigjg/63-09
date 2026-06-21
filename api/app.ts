@@ -6,6 +6,7 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import projectRoutes from './routes/projects.js'
 import configRoutes from './routes/configs.js'
+import dependencyRoutes from './routes/dependencies.js'
 import pullRoutes from './routes/pull.js'
 import encryptionRoutes from './routes/encryption.js'
 import logRoutes from './routes/logs.js'
@@ -22,6 +23,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 app.use('/api/projects', projectRoutes)
 app.use('/api/projects', configRoutes)
+app.use('/api/dependencies', dependencyRoutes)
 app.use('/api/pull', pullRoutes)
 app.use('/api/encryption', encryptionRoutes)
 app.use('/api/logs', logRoutes)

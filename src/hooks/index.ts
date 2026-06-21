@@ -3,6 +3,7 @@ export type { SSEEvent, SSEFilter } from './types';
 export { matchSSEEvent } from './types';
 export { useProjects } from './useProjects';
 export { useConfigs } from './useConfigs';
+export { useDependencies } from './useDependencies';
 export { useLogs } from './useLogs';
 export { useClients } from './useClients';
 export { useEncryption } from './useEncryption';

@@ -9,9 +9,28 @@ export interface ConfigItem {
   updatedBy: string;
 }
 
+export interface DependencyRule {
+  id: string;
+  sourceKey: string;
+  targetKey: string;
+  condition: string;
+  message: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DependencyAlert {
+  ruleId: string;
+  sourceKey: string;
+  targetKey: string;
+  message: string;
+  conditionMatched: boolean;
+}
+
 export interface Environment {
   name: string;
   configs: ConfigItem[];
+  dependencies: DependencyRule[];
 }
 
 export interface Project {

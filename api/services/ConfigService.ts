@@ -2,8 +2,9 @@ import { configRepository } from '../repositories/ConfigRepository.js';
 import { encryptionService } from './EncryptionService.js';
 import { notifyService } from './NotifyService.js';
 import { logService } from './LogService.js';
+import { evaluateCondition, validateCondition } from '../utils/conditionEvaluator.js';
 import crypto from 'crypto';
-import type { Project, ConfigItem, PullResponse } from '../../shared/types.js';
+import type { Project, ConfigItem, PullResponse, DependencyRule, DependencyAlert } from '../../shared/types.js';
 
 export class ConfigService {
   async getAllProjects(): Promise<Project[]> {
@@ -69,7 +70,7 @@ export class ConfigService {
     return result;
   }
 
-  async updateConfigItem(projectId: string, envName: string, key: string, updates: Partial<ConfigItem>): Promise<ConfigItem | null> {
+  async updateConfigItem(projectId: string, envName: string, key: string, updates: Partial<ConfigItem>): Promise<{ item: ConfigItem | null; alerts: DependencyAlert[] }> {
     if (updates.encrypted && updates.value) {
       const result = await encryptionService.encrypt(updates.value);
       updates.value = result.encrypted;
@@ -77,11 +78,13 @@ export class ConfigService {
       updates.tag = result.tag;
     }
     const result = await configRepository.updateConfigItem(projectId, envName, key, updates);
+    let alerts: DependencyAlert[] = [];
     if (result) {
       notifyService.notifyChange(projectId, envName, [key]);
       await logService.addLog('change', '', 'admin', projectId, envName, `更新配置项: ${key}`);
+      alerts = await this.checkDependencies(projectId, envName, [key]);
     }
-    return result;
+    return { item: result, alerts };
   }
 
   async deleteConfigItem(projectId: string, envName: string, key: string): Promise<boolean> {
@@ -161,6 +164,78 @@ export class ConfigService {
       await logService.addLog('decrypt', '', 'admin', projectId, envName, `解密配置项: ${key}`);
     }
     return updated;
+  }
+
+  async getDependencies(projectId: string, envName: string): Promise<DependencyRule[] | null> {
+    return configRepository.getDependencies(projectId, envName);
+  }
+
+  async addDependency(projectId: string, envName: string, sourceKey: string, targetKey: string, condition: string, message: string): Promise<DependencyRule | null> {
+    const validation = validateCondition(condition);
+    if (!validation.valid) {
+      throw new Error(`条件表达式无效: ${validation.error}`);
+    }
+    const rule: DependencyRule = {
+      id: `dep_${crypto.randomUUID().slice(0, 8)}`,
+      sourceKey,
+      targetKey,
+      condition,
+      message,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const result = await configRepository.addDependency(projectId, envName, rule);
+    if (result) {
+      await logService.addLog('change', '', 'admin', projectId, envName, `新增依赖规则: ${sourceKey} -> ${targetKey}`);
+    }
+    return result;
+  }
+
+  async updateDependency(projectId: string, envName: string, ruleId: string, updates: Partial<DependencyRule>): Promise<DependencyRule | null> {
+    if (updates.condition !== undefined) {
+      const validation = validateCondition(updates.condition);
+      if (!validation.valid) {
+        throw new Error(`条件表达式无效: ${validation.error}`);
+      }
+    }
+    const result = await configRepository.updateDependency(projectId, envName, ruleId, updates);
+    if (result) {
+      await logService.addLog('change', '', 'admin', projectId, envName, `更新依赖规则: ${ruleId}`);
+    }
+    return result;
+  }
+
+  async deleteDependency(projectId: string, envName: string, ruleId: string): Promise<boolean> {
+    const result = await configRepository.deleteDependency(projectId, envName, ruleId);
+    if (result) {
+      await logService.addLog('change', '', 'admin', projectId, envName, `删除依赖规则: ${ruleId}`);
+    }
+    return result;
+  }
+
+  async checkDependencies(projectId: string, envName: string, changedKeys: string[]): Promise<DependencyAlert[]> {
+    const configs = await configRepository.getEnvironmentConfigs(projectId, envName);
+    const dependencies = await configRepository.getDependencies(projectId, envName);
+    if (!configs || !dependencies) return [];
+
+    const alerts: DependencyAlert[] = [];
+    for (const rule of dependencies) {
+      if (changedKeys.includes(rule.sourceKey)) {
+        const conditionMatched = evaluateCondition(rule.condition, configs);
+        alerts.push({
+          ruleId: rule.id,
+          sourceKey: rule.sourceKey,
+          targetKey: rule.targetKey,
+          message: rule.message,
+          conditionMatched,
+        });
+      }
+    }
+    return alerts;
+  }
+
+  validateConditionExpr(condition: string): { valid: boolean; error?: string } {
+    return validateCondition(condition);
   }
 }
 
